@@ -1,51 +1,266 @@
+
 <!doctype html>
 <html lang="en">
+
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>InvoiceAI — PDF to CSV</title>
-<style>
-:root{font-family:system-ui,sans-serif;color:#172033;background:#f4f7fb}body{max-width:1000px;margin:40px auto;padding:0 20px}h1{margin-bottom:4px}.sub,.hint{color:#59657b}.panel{background:#fff;border:1px solid #dce4ee;border-radius:14px;padding:24px;margin:20px 0;box-shadow:0 3px 14px #14243c0b}input{display:block;margin:16px 0}button{background:#2459d1;color:white;border:0;border-radius:8px;padding:11px 18px;cursor:pointer;font:inherit}button:disabled{opacity:.5;cursor:wait}.secondary{background:#176b50;margin-left:8px}.scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;font-size:13px}th,td{padding:9px;border-bottom:1px solid #e2e6ed;text-align:left;white-space:nowrap}th{background:#f4f6fb}pre{white-space:pre-wrap;overflow-wrap:anywhere;background:#f5f7fb;padding:10px;border-radius:8px;font-size:12px}.error{color:#b42318}.note{font-size:13px;color:#59657b}
-</style>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <title>InvoiceFlow AI — PDF to CSV</title>
+
+    <!-- External CSS -->
+    <link rel="stylesheet" href="/static/style.css">
 </head>
+
 <body>
-<h1>InvoiceAI</h1><p class="sub">PDF Invoice → AI Extraction → Validation → CSV Download</p>
-<div class="panel"><h2>Upload Invoice PDFs</h2>
-<p class="hint">Up to 10 files, 10 MB each, maximum 5 pages per PDF. Supports selectable text and scanned PDFs.</p>
-<input id="files" type="file" accept=".pdf,application/pdf" multiple>
-<button id="process">Process Invoices</button><button class="secondary" id="download" hidden>Download CSV</button>
-<p id="message" aria-live="polite"></p></div>
-<div class="panel" id="output" hidden><h2>Extracted Invoice Data</h2><div class="scroll"><table id="results"></table></div><h2>LangGraph Execution Trace</h2><div id="trace"></div></div>
-<p class="note">Invoices are sent to the configured OpenAI API for extraction. Use synthetic test invoices; do not upload sensitive financial data without authorization.</p>
-<script>
-const processButton=document.getElementById('process');
-const downloadButton=document.getElementById('download');
-let csvText='';
-const columns=['filename','supplier_name','invoice_number','invoice_date','due_date','subtotal','tax','total','currency','status','issues'];
-processButton.addEventListener('click',async()=>{
- const files=[...document.getElementById('files').files];
- const message=document.getElementById('message');
- if(!files.length){message.textContent='Please select at least one PDF.';return;}
- if(files.length>10){message.textContent='Maximum 10 PDFs.';return;}
- const data=new FormData();files.forEach(file=>data.append('files',file));
- processButton.disabled=true;downloadButton.hidden=true;message.className='';message.textContent='Processing invoices...';
- try{
-   const response=await fetch('/api/process',{method:'POST',body:data});
-   const result=await response.json();
-   if(!response.ok)throw new Error(typeof result.detail==='string'?result.detail:'Processing failed');
-   csvText=result.csv_text;
-   const table=document.getElementById('results');table.replaceChildren();
-   const header=document.createElement('tr');columns.forEach(c=>{const th=document.createElement('th');th.textContent=c.replaceAll('_',' ');header.append(th)});table.append(header);
-   result.rows.forEach(row=>{const tr=document.createElement('tr');columns.forEach(c=>{const td=document.createElement('td');td.textContent=row[c]??'';tr.append(td)});table.append(tr)});
-   const trace=document.getElementById('trace');trace.replaceChildren();
-   result.trace.forEach(item=>{const title=document.createElement('strong');title.textContent=item.filename;const pre=document.createElement('pre');pre.textContent=item.steps.map(s=>`${s.node}: ${s.result}`).join('\n');trace.append(title,pre)});
-   document.getElementById('output').hidden=false;downloadButton.hidden=false;
-   message.textContent=`Processed ${result.rows.length} file(s). Review flagged or failed rows before using the CSV.`;
- }catch(error){message.className='error';message.textContent=`Error: ${error.message}`}
- finally{processButton.disabled=false}
-});
-downloadButton.addEventListener('click',()=>{
- const blob=new Blob(['\uFEFF',csvText],{type:'text/csv;charset=utf-8'});
- const url=URL.createObjectURL(blob);const link=document.createElement('a');link.href=url;link.download='invoices.csv';link.click();URL.revokeObjectURL(url);
-});
-</script>
-</body></html>
+
+    <h1>InvoiceFlow AI</h1>
+
+    <p class="sub">
+        PDF Invoice → AI Extraction → Validation → CSV Download
+    </p>
+
+    <!-- PDF Upload Section -->
+    <div class="panel">
+        <h2>Upload Invoice PDFs</h2>
+
+        <p class="hint">
+            Up to 10 files, 10 MB each, maximum 5 pages per PDF.
+            Supports selectable text and scanned PDFs.
+        </p>
+
+        <input
+            id="files"
+            type="file"
+            accept=".pdf,application/pdf"
+            multiple
+        >
+
+        <button id="process">Process Invoices</button>
+
+        <button class="secondary" id="download" hidden>
+            Download CSV
+        </button>
+
+        <p id="message" aria-live="polite"></p>
+    </div>
+
+    <!-- Output Section -->
+    <div class="panel" id="output" hidden>
+
+        <h2>Extracted Invoice Data</h2>
+
+        <div class="scroll">
+            <table id="results"></table>
+        </div>
+
+        <h2>LangGraph Execution Trace</h2>
+
+        <div id="trace"></div>
+    </div>
+
+    <p class="note">
+        Invoices are sent to the configured OpenAI API for extraction.
+        Use synthetic test invoices; do not upload sensitive financial
+        data without authorization.
+    </p>
+
+    <script>
+        // =========================
+        // HTML Elements
+        // =========================
+
+        const processButton = document.getElementById("process");
+        const downloadButton = document.getElementById("download");
+
+        let csvText = "";
+
+        const columns = [
+            "filename",
+            "supplier_name",
+            "invoice_number",
+            "invoice_date",
+            "due_date",
+            "subtotal",
+            "tax",
+            "total",
+            "currency",
+            "status",
+            "issues"
+        ];
+
+
+        // =========================
+        // Process Invoice PDFs
+        // =========================
+
+        processButton.addEventListener("click", async () => {
+
+            const files = [
+                ...document.getElementById("files").files
+            ];
+
+            const message = document.getElementById("message");
+
+            if (!files.length) {
+                message.textContent = "Please select at least one PDF.";
+                return;
+            }
+
+            if (files.length > 10) {
+                message.textContent = "Maximum 10 PDFs.";
+                return;
+            }
+
+            const data = new FormData();
+
+            files.forEach(file => {
+                data.append("files", file);
+            });
+
+            processButton.disabled = true;
+            downloadButton.hidden = true;
+            document.getElementById("output").hidden = true;
+            csvText = "";
+
+            message.className = "";
+            message.textContent = "Processing invoices...";
+
+            try {
+
+                // Send PDFs to FastAPI
+                const response = await fetch("/api/process", {
+                    method: "POST",
+                    body: data
+                });
+
+                const result = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(
+                        typeof result.detail === "string"
+                            ? result.detail
+                            : "Processing failed"
+                    );
+                }
+
+                // Store CSV content
+                csvText = result.csv_text;
+
+                // =========================
+                // Display Invoice Table
+                // =========================
+
+                const table = document.getElementById("results");
+
+                table.replaceChildren();
+
+                const header = document.createElement("tr");
+
+                columns.forEach(column => {
+
+                    const th = document.createElement("th");
+
+                    th.textContent = column.replaceAll("_", " ");
+
+                    header.append(th);
+                });
+
+                table.append(header);
+
+                result.rows.forEach(row => {
+
+                    const tr = document.createElement("tr");
+
+                    columns.forEach(column => {
+
+                        const td = document.createElement("td");
+
+                        td.textContent = row[column] ?? "";
+
+                        tr.append(td);
+                    });
+
+                    table.append(tr);
+                });
+
+
+                // =========================
+                // Display LangGraph Trace
+                // =========================
+
+                const trace = document.getElementById("trace");
+
+                trace.replaceChildren();
+
+                result.trace.forEach(item => {
+
+                    const title = document.createElement("strong");
+
+                    title.textContent = item.filename;
+
+                    const pre = document.createElement("pre");
+
+                    pre.textContent = item.steps
+                        .map(step => `${step.node}: ${step.result}`)
+                        .join("\n");
+
+                    trace.append(title, pre);
+                });
+
+
+                // =========================
+                // Show Results
+                // =========================
+
+                document.getElementById("output").hidden = false;
+
+                downloadButton.hidden = false;
+
+                message.textContent =
+                    `Processed ${result.rows.length} file(s). ` +
+                    "Review flagged or failed rows before using the CSV.";
+
+            } catch (error) {
+
+                message.className = "error";
+
+                message.textContent = `Error: ${error.message}`;
+
+            } finally {
+
+                processButton.disabled = false;
+            }
+
+        });
+
+
+        // =========================
+        // Download CSV
+        // =========================
+
+        downloadButton.addEventListener("click", () => {
+
+            const blob = new Blob(
+                ["\uFEFF", csvText],
+                { type: "text/csv;charset=utf-8" }
+            );
+
+            const url = URL.createObjectURL(blob);
+
+            const link = document.createElement("a");
+
+            link.href = url;
+            link.download = "invoices.csv";
+
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+
+            URL.revokeObjectURL(url);
+        });
+
+    </script>
+
+</body>
+</html>
