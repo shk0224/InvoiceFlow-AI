@@ -2,10 +2,7 @@
 """Tool 2: Extract invoice fields using OpenAI structured output."""
 
 from langchain_core.tools import tool
-import os
-from decimal import Decimal
 from pydantic import BaseModel, Field
-from langchain_openai import ChatOpenAI
 from langchain_core.messages import HumanMessage, SystemMessage
 
 
@@ -42,6 +39,27 @@ EXTRACTION_INSTRUCTIONS = (
 
 
 # ==========================================
+# LLM CONNECTION
+# Function: configure_extraction_llm()
+# Called by: backend.py
+# Purpose: Receive the LLM created in backend.py
+# ==========================================
+
+extractor = None
+
+
+def configure_extraction_llm(llm):
+    """Configure the structured-output extractor using the backend LLM."""
+
+    global extractor
+
+    extractor = llm.with_structured_output(
+        InvoiceFields,
+        method="json_schema"
+    )
+
+
+# ==========================================
 # TOOL 2: INVOICE EXTRACTOR
 # Function: extract_invoice_data()
 # Called by: backend.py -> invoice_extractor_node()
@@ -53,20 +71,10 @@ EXTRACTION_INSTRUCTIONS = (
 def extract_invoice_data(pdf_text: str, page_images: list[str]) -> dict:
     """Use text for normal PDFs, and image vision for scan-only PDFs."""
 
-    if not os.getenv("OPENAI_API_KEY"):
-        raise ValueError(
-            "OPENAI_API_KEY missing. Copy .env.example to .env and add your key."
+    if extractor is None:
+        raise RuntimeError(
+            "LLM is not configured. Initialize it in backend.py."
         )
-
-    model = ChatOpenAI(
-        model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-        temperature=0
-    )
-
-    extractor = model.with_structured_output(
-        InvoiceFields,
-        method="json_schema"
-    )
 
     content = [
         {

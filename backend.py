@@ -5,8 +5,10 @@
 # IMPORTS: LANGGRAPH AND LANGCHAIN TOOLS
 # ==========================================
 
+import os
 from typing import TypedDict
 from dotenv import load_dotenv
+from langchain_openai import ChatOpenAI
 from langgraph.graph import StateGraph, START, END
 
 from tools import (
@@ -15,9 +17,27 @@ from tools import (
     export_invoices_csv,
 )
 
-from tools.invoice_extractor import extract_invoice_data
+from tools.invoice_extractor import (
+    extract_invoice_data,
+    configure_extraction_llm,
+)
 
 load_dotenv()
+
+
+# ==========================================
+# LLM
+# Purpose: Initialize OpenAI in backend.py
+# Used by: tools/invoice_extractor.py
+# ==========================================
+
+llm = ChatOpenAI(
+    model=os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
+    temperature=0
+)
+
+# Give the extraction tool access to this LLM.
+configure_extraction_llm(llm)
 
 
 # ==========================================
@@ -69,7 +89,7 @@ def pdf_reader_node(state: InvoiceState) -> dict:
 # SECTION 3: LANGGRAPH NODE 2
 # Function: invoice_extractor_node()
 # Tool: extract_invoice_data.invoke()
-# LLM: OpenAI, inside tools/invoice_extractor.py
+# LLM: OpenAI, initialized in backend.py
 # ==========================================
 
 # Node 2: LLM extracts fields.
